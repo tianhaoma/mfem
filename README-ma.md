@@ -14,7 +14,7 @@ $ make parallel MFEM_USE_METIS_5=YES METIS_DIR=<dir-to-metis-5>
 $ cd mfem-ma/miniapps/meshing  
 $ make mesh-explorer  
 
-##Prepare .vtk .fiber .sheet .transverse to extract them into parallel.
+## Prepare .vtk .fiber .sheet .transverse to extract them into parallel.
 
 $./mesh-explorer -m <dir-to-mesh> -gf_f <dir-to-.fiber> -gf_s <dir-to-.sheet> -gf_t <dir-to-.transverse>  
 
