@@ -265,11 +265,20 @@ int main (int argc, char *argv[])
 {
    int np = 0;
    const char *mesh_file = "../../data/beam-hex.mesh";
+   const char *grid_fiber_file = "../../data/beam-hex.fiber";
+   const char *grid_sheet_file = "../../data/beam-hex.sheet";
+   const char *grid_transverse_file = "../../data/beam-hex.transverse";
    bool refine = true;
 
    OptionsParser args(argc, argv);
    args.AddOption(&mesh_file, "-m", "--mesh",
                   "Mesh file to visualize.");
+   args.AddOption(&grid_fiber_file, "-gf_f", "--grid_fiber",
+                  "fiber file to visualize.");
+   args.AddOption(&grid_sheet_file, "-gf_s", "--grid_sheet",
+                  "sheet file to visualize.");
+   args.AddOption(&grid_transverse_file, "-gf_t", "--grid_transverse",
+                  "transverse file to visualize.");
    args.AddOption(&np, "-np", "--num-proc",
                   "Load mesh from multiple processors.");
    args.AddOption(&refine, "-ref", "--refinement", "-no-ref", "--no-refinement",
@@ -294,6 +303,9 @@ int main (int argc, char *argv[])
 
    Mesh *mesh;
    Mesh *bdr_mesh = NULL;
+   GridFunction *grid_fiber;
+   GridFunction *grid_sheet;
+   GridFunction *grid_transverse;
 
    // Helper to distinguish whether we use a parallel or serial mesh.
    const bool use_par_mesh = np > 0;
@@ -304,11 +316,42 @@ int main (int argc, char *argv[])
    if (!use_par_mesh)
    {
       mesh = new Mesh(mesh_file, 1, refine);
+      std::ifstream infile_fiber(grid_fiber_file);
+      std::ifstream infile_sheet(grid_sheet_file);
+      std::ifstream infile_transverse(grid_transverse_file);
+      grid_fiber = new GridFunction(mesh, infile_fiber);
+      grid_sheet = new GridFunction(mesh, infile_sheet);
+      grid_transverse = new GridFunction(mesh, infile_transverse);
+
       partitioning.SetSize(mesh->GetNE());
       partitioning = 0;
       bdr_partitioning.SetSize(mesh->GetNBE());
       bdr_partitioning = 0;
       np = 1;
+
+//partition chambers of the heart
+ #if 0
+    std::ifstream inputFile("fullheart_15M_fiber_vtk4_partitioning_14551284.txt"); // 打开文件
+
+    if (inputFile.is_open()) {
+        std::vector<int> partitioningArray; // 创建存储数据的向量
+
+        int num;
+        while (inputFile >> num) {
+            partitioningArray.push_back(num); // 将从文件读取的数字添加到向量中
+        }
+
+        inputFile.close(); // 关闭文件
+
+        // 将向量转换为 array<int>
+        int size = partitioningArray.size();
+        //int* partitioningArr = new int[size];
+        for (int i = 0; i < size; i++) {
+            partitioning[i] = partitioningArray[i];
+        }
+    }
+np = 2;
+ #endif
    }
    else
    {
@@ -318,6 +361,8 @@ int main (int argc, char *argv[])
          return 3;
       }
    }
+
+
    int dim  = mesh->Dimension();
    int sdim = mesh->SpaceDimension();
 
@@ -1254,7 +1299,10 @@ int main (int argc, char *argv[])
 
       if (mk == 'T')
       {
-         string mesh_prefix("mesh-explorer.mesh."), line;
+         string mesh_prefix("fullheart.mesh."), line;
+         string grid_fiber_prefix("fullheart.fiber.");
+         string grid_sheet_prefix("fullheart.sheet.");
+         string grid_transverse_prefix("fullheart.transverse.");
          MeshPartitioner partitioner(*mesh, np, partitioning);
          MeshPart mesh_part;
          cout << "Enter mesh file prefix or press <enter> to use \""
@@ -1268,15 +1316,42 @@ int main (int argc, char *argv[])
          cout << "Enter floating point output precision (num. digits): "
               << flush;
          cin >> precision;
+
          for (int i = 0; i < np; i++)
          {
+            cout << "Part :(" << i << ")" << endl;
+            cout << "Extracting Part" << endl;
             partitioner.ExtractPart(i, mesh_part);
-
+            cout << "Extracting FESpace" << endl;
+            FiniteElementSpace local_fes_fiber = *partitioner.ExtractFESpace(mesh_part, *grid_fiber->FESpace());
+            FiniteElementSpace local_fes_sheet = *partitioner.ExtractFESpace(mesh_part, *grid_sheet->FESpace());
+            FiniteElementSpace local_fes_transverse = *partitioner.ExtractFESpace(mesh_part, *grid_transverse->FESpace());
+            cout << "Extracting GridFunction" << endl;
+            GridFunction local_gf_fiber = *partitioner.ExtractGridFunction(mesh_part, *grid_fiber, local_fes_fiber);
+            GridFunction local_gf_sheet = *partitioner.ExtractGridFunction(mesh_part, *grid_sheet, local_fes_sheet);
+            GridFunction local_gf_transverse = *partitioner.ExtractGridFunction(mesh_part, *grid_transverse, local_fes_transverse);
+            cout << "Printing ParMesh" << endl;
             ofstream omesh(MakeParFilename(mesh_prefix, i));
             omesh.precision(precision);
             mesh_part.Print(omesh);
+            
+            cout << "Printing ParGridFunction" << endl;
+            ofstream ogird_fiber(MakeParFilename(grid_fiber_prefix, i));
+            ogird_fiber.precision(precision);
+            local_gf_fiber.Save(ogird_fiber);
+
+            ofstream ogird_sheet(MakeParFilename(grid_sheet_prefix, i));
+            ogird_sheet.precision(precision);
+            local_gf_sheet.Save(ogird_sheet);
+
+            ofstream ogird_transverse(MakeParFilename(grid_transverse_prefix, i));
+            ogird_transverse.precision(precision);
+            local_gf_transverse.Save(ogird_transverse);
          }
          cout << "New parallel mesh files: " << mesh_prefix << "<rank>" << endl;
+         cout << "New parallel fiber files: " << grid_fiber_prefix << "<rank>" << endl;
+         cout << "New parallel sheet files: " << grid_sheet_prefix << "<rank>" << endl;
+         cout << "New parallel transverse files: " << grid_transverse_prefix << "<rank>" << endl;
       }
 
       if (mk == 'V')
